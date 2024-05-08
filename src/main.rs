@@ -1,15 +1,17 @@
 use axum::response::IntoResponse;
 use base64::Engine;
 use base64::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub mod crypto;
 
 struct User {
     uid: String,
     password: String,
-    public_key: Vec<u8>,
-    private_key: Vec<u8>,
+    signing_public_key: Vec<u8>,
+    signing_private_key: Vec<u8>,
+    encryption_public_key: Vec<u8>,
+    encryption_private_key: Vec<u8>,
     master_key: Vec<u8>,
 }
 
@@ -20,13 +22,15 @@ async fn main() {
     let password = "password".to_string();
     let user = create_user(uid, password);
 
-    send_user_request(user).await;
+    //send_user_request(user).await;
+    login(user.uid, user.password).await;
 }
 
 // Function to create a new user
 fn create_user(uid: String, password: String) -> User {
     // Generate a new key pair
-    let (public_key, private_key) = crypto::generate_key_pair();
+    let (signing_public_key, signing_private_key) = crypto::generate_key_pair();
+    let (encryption_public_key, encryption_private_key) = crypto::generate_key_pair();
 
     // Generate a new master key
     let master_key = crypto::generate_master_key();
@@ -34,23 +38,30 @@ fn create_user(uid: String, password: String) -> User {
     let user = User {
         uid,
         password,
-        public_key,
-        private_key,
+        signing_public_key,
+        signing_private_key,
         master_key,
+        encryption_public_key,
+        encryption_private_key,
     };
     user
 }
 
 async fn send_user_request(user: User) -> impl IntoResponse {
-    let (encrypted_master_key, salt) = crypto::encrypt_master_key(user.password.clone(), user.master_key.clone());
+    let (encrypted_master_key, nonce_master, salt, challenge_key, nonce_chall) = crypto::encrypt_master_key(user.password.clone(), user.master_key.clone());
     // Serialize the user object
     let user = Create {
         uid: user.uid,
         salt,
-        pk: crypto::encrypt_private_key(user.private_key.clone(), user.master_key.clone()),
-        public_key: BASE64_STANDARD.encode(user.public_key),
+        pk_signing: crypto::encrypt_private_key(user.signing_private_key.clone(), user.master_key.clone()),
+        pk_encryption: crypto::encrypt_private_key(user.encryption_private_key.clone(), user.master_key.clone()),
+        public_key_signing: BASE64_STANDARD.encode(user.signing_public_key),
+        public_key_encryption: BASE64_STANDARD.encode(user.encryption_public_key),
         master_key: encrypted_master_key,
         shared_files: vec![],
+        challenge_key,
+        nonce_master,
+        nonce_chall,
     };
 
     // Send a POST request to the server
@@ -63,12 +74,74 @@ async fn send_user_request(user: User) -> impl IntoResponse {
     (res.status(), res.text().await.unwrap())
 }
 
+async fn login (uid: String, password: String) -> impl IntoResponse {
+
+    // Send a Post request to login
+    let client = reqwest::Client::new();
+    let res = client.post("http://localhost:3000/client_hello")
+        .json(&uid)
+        .send()
+        .await
+        .unwrap();
+
+    // Deserialize the response
+    let res: Challenge = res.json().await.unwrap();
+    let token = res.token;
+
+    // Derive key from password
+    let (challenge_encryption_key, key_encryption_key) = crypto::key_derivation(password, res.salt);
+
+    // Decrypt the challenge key
+    let challenge_key = crypto::decrypt_challenge_key(challenge_encryption_key, key_encryption_key, res.nonce_chall);
+
+    // Decrypt the challenge
+    let challenge = crypto::decrypt_challenge(challenge_key, res.challenge, res.nonce);
+
+    // Send a response to the server containing the challenge and the token
+    let res = client.post("http://localhost:3000/response_challenge")
+        .json(&ChallengeResponse {
+            challenge: BASE64_STANDARD.encode(challenge),
+            token,
+        })
+        .send()
+        .await
+        .unwrap();
+
+    (res.status(), res.text().await.unwrap())
+}
+
 #[derive(Serialize)]
 struct Create {
     uid: String,
-    pk: String,
-    public_key: String,
+    salt: String,
     master_key: String,
     shared_files: Vec<String>,
+    challenge_key: String,
+    public_key_signing: String,
+    public_key_encryption: String,
+    pk_signing: String,
+    pk_encryption: String,
+    nonce_master: String,
+    nonce_chall: String,
+}
+
+#[derive(Serialize)]
+struct Login {
+    uid: String,
+    challenge_key: String,
+}
+
+#[derive(Deserialize)]
+struct Challenge {
+    challenge: String,
+    nonce: String,
+    token: String,
     salt: String,
+    nonce_chall: String,
+}
+
+#[derive(Serialize)]
+struct ChallengeResponse {
+    challenge: String,
+    token: String,
 }
