@@ -72,6 +72,8 @@ pub fn encrypt_master_key(password: String, master_key: Vec<u8>) -> (String, Str
 pub(crate) fn key_derivation(password: String, salt: String) -> (Vec<u8>, Vec<u8>) {
     let mut key = [0u8; CRYPTO_SECRETBOX_KEYBYTES];
 
+    let salt = BASE64_STANDARD.decode(salt).unwrap();
+
     crypto_pwhash(
         &mut key,
         password.as_ref(),
@@ -96,11 +98,12 @@ pub(crate) fn key_derivation(password: String, salt: String) -> (Vec<u8>, Vec<u8
 
 }
 
+/*
 pub(crate) fn decrypt_challenge_key(challenge_encryption_key: Vec<u8>, key_encryption_key: Vec<u8>, nonce: String) -> Vec<u8> {
  // Decode from Base64
-    let challenge_key = BASE64_STANDARD.decode(challenge_encryption_key.as_bytes()).unwrap();
-    let key = BASE64_STANDARD.decode(key_encryption_key.as_bytes()).unwrap();
-    let nonce = BASE64_STANDARD.decode(nonce.as_bytes()).unwrap();
+    let challenge_key = BASE64_STANDARD.decode(challenge_encryption_key).unwrap();
+    let key = BASE64_STANDARD.decode(key_encryption_key).unwrap();
+    let nonce = BASE64_STANDARD.decode(nonce).unwrap();
 
     // Convert to correct types
     let nonce = nonce.as_slice().try_into().expect("nonce length invalid");
@@ -112,15 +115,16 @@ pub(crate) fn decrypt_challenge_key(challenge_encryption_key: Vec<u8>, key_encry
 
     decrypted
 }
+ */
 
 pub(crate) fn decrypt_challenge(challenge_key: Vec<u8>, challenge: String, nonce: String) -> Vec<u8> {
     // Decode from Base64
-    let challenge = BASE64_STANDARD.decode(challenge.as_bytes()).unwrap();
-    let nonce = BASE64_STANDARD.decode(nonce.as_bytes()).unwrap();
+    let challenge = BASE64_STANDARD.decode(challenge).unwrap();
+    let nonce = BASE64_STANDARD.decode(nonce).unwrap();
 
     // Convert to correct types
-    let nonce = nonce.as_slice().try_into().expect("nonce length invalid");
-    let challenge = challenge.as_slice().try_into().expect("key length invalid");
+    let nonce = nonce.try_into().unwrap();
+    let challenge_key = challenge_key.try_into().unwrap();
 
     // Decrypt the challenge key
     let mut decrypted = vec![0u8; challenge.len() - CRYPTO_SECRETBOX_MACBYTES];

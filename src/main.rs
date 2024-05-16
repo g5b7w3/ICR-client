@@ -23,8 +23,10 @@ async fn main() {
     let user = create_user(uid, password);
 
     //send_user_request(user).await;
-    login(user.uid, user.password).await;
-}
+
+    //login(user.uid,user.password).await;
+    
+    }
 
 // Function to create a new user
 fn create_user(uid: String, password: String) -> User {
@@ -76,26 +78,40 @@ async fn send_user_request(user: User) -> impl IntoResponse {
 
 async fn login (uid: String, password: String) -> impl IntoResponse {
 
+    let body: HelloSer = HelloSer {
+        uid: uid.clone(),
+    };
     // Send a Post request to login
     let client = reqwest::Client::new();
     let res = client.post("http://localhost:3000/client_hello")
-        .json(&uid)
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+
+    // Deserialize the response
+    let res: Hello = res.json().await.unwrap();
+    let token = res.token;
+
+    // Derive key from password
+    let (challenge_encryption_key, key_encryption_key) = crypto::key_derivation(password, res.salt);
+
+
+    // Send the challenge key to the server
+    let res = client.post("http://localhost:3000/login")
+        .json(&Login {
+            uid,
+            challenge_key: BASE64_STANDARD.encode(key_encryption_key),
+        })
         .send()
         .await
         .unwrap();
 
     // Deserialize the response
     let res: Challenge = res.json().await.unwrap();
-    let token = res.token;
-
-    // Derive key from password
-    let (challenge_encryption_key, key_encryption_key) = crypto::key_derivation(password, res.salt);
-
-    // Decrypt the challenge key
-    let challenge_key = crypto::decrypt_challenge_key(challenge_encryption_key, key_encryption_key, res.nonce_chall);
 
     // Decrypt the challenge
-    let challenge = crypto::decrypt_challenge(challenge_key, res.challenge, res.nonce);
+    let challenge = crypto::decrypt_challenge(challenge_encryption_key, res.challenge, res.nonce);
 
     // Send a response to the server containing the challenge and the token
     let res = client.post("http://localhost:3000/response_challenge")
@@ -108,6 +124,7 @@ async fn login (uid: String, password: String) -> impl IntoResponse {
         .unwrap();
 
     (res.status(), res.text().await.unwrap())
+
 }
 
 #[derive(Serialize)]
@@ -132,10 +149,14 @@ struct Login {
 }
 
 #[derive(Deserialize)]
+struct Hello {
+    token: String,
+    salt: String,
+}
+#[derive(Deserialize)]
 struct Challenge {
     challenge: String,
     nonce: String,
-    token: String,
     salt: String,
     nonce_chall: String,
 }
@@ -144,4 +165,9 @@ struct Challenge {
 struct ChallengeResponse {
     challenge: String,
     token: String,
+}
+
+#[derive(Serialize)]
+struct HelloSer {
+    uid: String,
 }
