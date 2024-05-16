@@ -1,6 +1,7 @@
 use axum::response::IntoResponse;
 use base64::Engine;
 use base64::prelude::*;
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 
 pub mod crypto;
@@ -24,9 +25,16 @@ async fn main() {
 
     //send_user_request(user).await;
 
-    //login(user.uid,user.password).await;
-    
+    // Try to log in with the user
+    let response = login(user.uid, user.password).await.into_response();
+    match response.status() {
+        StatusCode::OK => println!("Login successful!"),
+        StatusCode::UNAUTHORIZED => println!("Login failed!"),
+        _ => println!("Error"),
     }
+
+    // TODO: EVERY OTHER FUCKING FUNCTIONALITIES
+}
 
 // Function to create a new user
 fn create_user(uid: String, password: String) -> User {
@@ -81,7 +89,7 @@ async fn login (uid: String, password: String) -> impl IntoResponse {
     let body: HelloSer = HelloSer {
         uid: uid.clone(),
     };
-    // Send a Post request to login
+    // Send a Post request to log in
     let client = reqwest::Client::new();
     let res = client.post("http://localhost:3000/client_hello")
         .json(&body)
@@ -113,6 +121,12 @@ async fn login (uid: String, password: String) -> impl IntoResponse {
     // Decrypt the challenge
     let challenge = crypto::decrypt_challenge(challenge_encryption_key, res.challenge, res.nonce);
 
+    // Try wrong challenge
+    //let challenge = vec![0u8; challenge.len()];
+
+    // Try wrong token
+    //let token = "wrong_token".to_string();
+
     // Send a response to the server containing the challenge and the token
     let res = client.post("http://localhost:3000/response_challenge")
         .json(&ChallengeResponse {
@@ -124,7 +138,6 @@ async fn login (uid: String, password: String) -> impl IntoResponse {
         .unwrap();
 
     (res.status(), res.text().await.unwrap())
-
 }
 
 #[derive(Serialize)]
