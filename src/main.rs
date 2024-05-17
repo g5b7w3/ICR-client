@@ -3,8 +3,11 @@ use base64::Engine;
 use base64::prelude::*;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
+use crate::serialization::{ChallengeDes, CreateSer, HelloSer, LoginSer, HelloResponseDes, ChallengeResponseSer};
+
 
 pub mod crypto;
+pub mod serialization;
 
 struct User {
     uid: String,
@@ -60,7 +63,7 @@ fn create_user(uid: String, password: String) -> User {
 async fn send_user_request(user: User) -> impl IntoResponse {
     let (encrypted_master_key, nonce_master, salt, challenge_key, nonce_chall) = crypto::encrypt_master_key(user.password.clone(), user.master_key.clone());
     // Serialize the user object
-    let user = Create {
+    let user = CreateSer {
         uid: user.uid,
         salt,
         pk_signing: crypto::encrypt_private_key(user.signing_private_key.clone(), user.master_key.clone()),
@@ -89,6 +92,7 @@ async fn login (uid: String, password: String) -> impl IntoResponse {
     let body: HelloSer = HelloSer {
         uid: uid.clone(),
     };
+
     // Send a Post request to log in
     let client = reqwest::Client::new();
     let res = client.post("http://localhost:3000/client_hello")
@@ -98,16 +102,15 @@ async fn login (uid: String, password: String) -> impl IntoResponse {
         .unwrap();
 
     // Deserialize the response
-    let res: Hello = res.json().await.unwrap();
+    let res: HelloResponseDes = res.json().await.unwrap();
     let token = res.token;
 
     // Derive key from password
     let (challenge_encryption_key, key_encryption_key) = crypto::key_derivation(password, res.salt);
 
-
     // Send the challenge key to the server
     let res = client.post("http://localhost:3000/login")
-        .json(&Login {
+        .json(&LoginSer {
             uid,
             challenge_key: BASE64_STANDARD.encode(key_encryption_key),
         })
@@ -116,7 +119,7 @@ async fn login (uid: String, password: String) -> impl IntoResponse {
         .unwrap();
 
     // Deserialize the response
-    let res: Challenge = res.json().await.unwrap();
+    let res: ChallengeDes = res.json().await.unwrap();
 
     // Decrypt the challenge
     let challenge = crypto::decrypt_challenge(challenge_encryption_key, res.challenge, res.nonce);
@@ -129,7 +132,7 @@ async fn login (uid: String, password: String) -> impl IntoResponse {
 
     // Send a response to the server containing the challenge and the token
     let res = client.post("http://localhost:3000/response_challenge")
-        .json(&ChallengeResponse {
+        .json(&ChallengeResponseSer {
             challenge: BASE64_STANDARD.encode(challenge),
             token,
         })
@@ -138,49 +141,4 @@ async fn login (uid: String, password: String) -> impl IntoResponse {
         .unwrap();
 
     (res.status(), res.text().await.unwrap())
-}
-
-#[derive(Serialize)]
-struct Create {
-    uid: String,
-    salt: String,
-    master_key: String,
-    shared_files: Vec<String>,
-    challenge_key: String,
-    public_key_signing: String,
-    public_key_encryption: String,
-    pk_signing: String,
-    pk_encryption: String,
-    nonce_master: String,
-    nonce_chall: String,
-}
-
-#[derive(Serialize)]
-struct Login {
-    uid: String,
-    challenge_key: String,
-}
-
-#[derive(Deserialize)]
-struct Hello {
-    token: String,
-    salt: String,
-}
-#[derive(Deserialize)]
-struct Challenge {
-    challenge: String,
-    nonce: String,
-    salt: String,
-    nonce_chall: String,
-}
-
-#[derive(Serialize)]
-struct ChallengeResponse {
-    challenge: String,
-    token: String,
-}
-
-#[derive(Serialize)]
-struct HelloSer {
-    uid: String,
 }
