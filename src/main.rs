@@ -3,7 +3,7 @@ use base64::Engine;
 use base64::prelude::*;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use crate::serialization::{ChallengeDes, CreateSer, HelloSer, LoginSer, HelloResponseDes, ChallengeResponseSer};
+use crate::serialization::{ChallengeDes, CreateSer, HelloSer, LoginSer, HelloResponseDes, ChallengeResponseSer, ReadDirectorySer, WriteDirectorySer, DirectorySer};
 
 
 pub mod crypto;
@@ -29,12 +29,15 @@ async fn main() {
     //send_user_request(user).await;
 
     // Try to log in with the user
-    let response = login(user.uid, user.password).await.into_response();
+    let response = login(user.uid.clone(), user.password).await.into_response();
     match response.status() {
         StatusCode::OK => println!("Login successful!"),
         StatusCode::UNAUTHORIZED => println!("Login failed!"),
         _ => println!("Error"),
     }
+
+    // Create the root directory
+    create_root_directory(user.uid).await;
 
     // TODO: EVERY OTHER FUCKING FUNCTIONALITIES
 }
@@ -136,6 +139,52 @@ async fn login (uid: String, password: String) -> impl IntoResponse {
             challenge: BASE64_STANDARD.encode(challenge),
             token,
         })
+        .send()
+        .await
+        .unwrap();
+
+    (res.status(), res.text().await.unwrap())
+}
+
+async fn create_root_directory(uid: String) -> impl IntoResponse {
+
+    let response = create_directory("root".to_string(), uid).await.into_response();
+    match response.status() {
+        StatusCode::OK => println!("Successfully created root directory!"),
+        StatusCode::UNAUTHORIZED => println!("Login failed!"),
+        _ => println!("Error"),
+    }
+
+}
+
+async fn create_directory(directory_name: String, current_path: String) -> impl IntoResponse{
+    // Create a new read directory structure
+    let read_directory = ReadDirectorySer {
+        directory_uid: current_path.clone(),
+        directory_name: directory_name.clone(),
+        files_names: vec![],
+        files_uid: vec![],
+        files_encryption_keys: "".to_string(),
+        files_signatures_verification_keys: "".to_string(),
+        files_nonce: vec![],
+    };
+
+    // Create a new write directory structure
+    let write_directory = WriteDirectorySer {
+        directory_uid: current_path,
+        directory_name,
+        files_signing_keys: "".to_string(),
+    };
+
+    let payload = DirectorySer {
+        read: read_directory,
+        write: write_directory,
+    };
+
+    // Send the request to the server
+    let client = reqwest::Client::new();
+    let res = client.post("http://localhost:3000/create_directory")
+        .json(&payload)
         .send()
         .await
         .unwrap();
