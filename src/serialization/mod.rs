@@ -43,6 +43,10 @@ pub struct CreateSer {
     pub pk_encryption: String,
     pub nonce_master: String,
     pub nonce_chall: String,
+    pub nonce_pk_signing: String,
+    pub nonce_pk_encryption: String,
+    pub root_key: String,
+    pub root_nonce: String,
 }
 
 #[derive(Serialize)]
@@ -56,8 +60,8 @@ pub struct ChallengeResponseSer{
     pub token: String,
 }
 
-#[derive(Deserialize)]
-pub struct UpdateUserDes {
+#[derive(Deserialize, Debug)]
+pub struct UpdateUserDes{
     pub pk_signing: String,
     pub pk_encryption: String,
     pub master_key: String,
@@ -66,6 +70,10 @@ pub struct UpdateUserDes {
     pub challenge_key: String,
     pub nonce_master: String,
     pub nonce_chall: String,
+    pub nonce_pk_signing: String,
+    pub nonce_pk_encryption: String,
+    pub root_key: String,
+    pub root_nonce: String,
 }
 
 #[derive(Deserialize)]
@@ -88,3 +96,24 @@ pub struct HelloResponseDes{
     pub salt: String,
 }
 
+#[derive(Deserialize)]
+pub struct LoggedUserDes{
+    pub pk_signing : String,
+    pub pk_encryption : String,
+    pub master_key : String,
+    pub shared_files : Vec<String>,
+    pub nonce_master : String,
+    pub nonce_pk_signing : String,
+    pub nonce_pk_encryption : String,
+    pub root_key : String,
+    pub root_nonce : String,
+}
+
+#[derive(Debug)]
+pub struct LoggedUser {
+    pub pk_signing : Vec<u8>,
+    pub pk_encryption : Vec<u8>,
+    pub master_key : Vec<u8>,
+    pub shared_files : Vec<String>,
+    pub root_key : Vec<u8>,
+}

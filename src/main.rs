@@ -1,9 +1,10 @@
+use std::os::linux::raw::stat;
 use axum::response::IntoResponse;
 use base64::Engine;
 use base64::prelude::*;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use crate::serialization::{ChallengeDes, CreateSer, HelloSer, LoginSer, HelloResponseDes, ChallengeResponseSer, ReadDirectorySer, WriteDirectorySer, DirectorySer};
+use crate::serialization::{ChallengeDes, CreateSer, HelloSer, LoginSer, HelloResponseDes, ChallengeResponseSer, ReadDirectorySer, WriteDirectorySer, DirectorySer, UpdateUserDes, LoggedUserDes, LoggedUser};
 
 
 pub mod crypto;
@@ -17,27 +18,31 @@ struct User {
     encryption_public_key: Vec<u8>,
     encryption_private_key: Vec<u8>,
     master_key: Vec<u8>,
+    root_key: Vec<u8>,
 }
 
 #[tokio::main]
 async fn main() {
     // Create a new user
-    let uid = "1".to_string();
+    let uid = "3".to_string();
     let password = "password".to_string();
     let user = create_user(uid, password);
 
+    // Create a user and its root directory
     //send_user_request(user).await;
 
     // Try to log in with the user
-    let response = login(user.uid.clone(), user.password).await.into_response();
-    match response.status() {
-        StatusCode::OK => println!("Login successful!"),
+    let (res, logged_user) = login(user.uid.clone(), user.password).await;
+    match res.into_response().status() {
+        StatusCode::OK => println!("Successfully logged in!"),
         StatusCode::UNAUTHORIZED => println!("Login failed!"),
         _ => println!("Error"),
     }
 
-    // Create the root directory
-    create_root_directory(user.uid).await;
+    println!("{:?}", logged_user);
+
+    //create_root_directory(user.uid, logged_user.root_key).await;
+
 
     // TODO: EVERY OTHER FUCKING FUNCTIONALITIES
 }
@@ -49,7 +54,10 @@ fn create_user(uid: String, password: String) -> User {
     let (encryption_public_key, encryption_private_key) = crypto::generate_key_pair();
 
     // Generate a new master key
-    let master_key = crypto::generate_master_key();
+    let master_key = crypto::generate_sym_key();
+
+    // Generate root key
+    let root_key = crypto::generate_sym_key();
 
     let user = User {
         uid,
@@ -59,18 +67,30 @@ fn create_user(uid: String, password: String) -> User {
         master_key,
         encryption_public_key,
         encryption_private_key,
+        root_key
     };
     user
 }
 
 async fn send_user_request(user: User) -> impl IntoResponse {
     let (encrypted_master_key, nonce_master, salt, challenge_key, nonce_chall) = crypto::encrypt_master_key(user.password.clone(), user.master_key.clone());
+
+    // Encrypt signing private key
+    let (pk_signing, nonce_pk_signing) = crypto::sym_encryption(user.signing_private_key.clone(), user.master_key.clone());
+
+    // Encrypt decryption private key
+    let (pk_encryption, nonce_pk_encryption) = crypto::sym_encryption(user.encryption_private_key.clone(), user.master_key.clone());
+
+    let (root_key, root_nonce) = crypto::sym_encryption(user.root_key.clone(), user.master_key.clone());
+
     // Serialize the user object
     let user = CreateSer {
         uid: user.uid,
         salt,
-        pk_signing: crypto::encrypt_private_key(user.signing_private_key.clone(), user.master_key.clone()),
-        pk_encryption: crypto::encrypt_private_key(user.encryption_private_key.clone(), user.master_key.clone()),
+        pk_signing,
+        nonce_pk_signing,
+        pk_encryption,
+        nonce_pk_encryption,
         public_key_signing: BASE64_STANDARD.encode(user.signing_public_key),
         public_key_encryption: BASE64_STANDARD.encode(user.encryption_public_key),
         master_key: encrypted_master_key,
@@ -78,6 +98,8 @@ async fn send_user_request(user: User) -> impl IntoResponse {
         challenge_key,
         nonce_master,
         nonce_chall,
+        root_key,
+        root_nonce
     };
 
     // Send a POST request to the server
@@ -90,7 +112,9 @@ async fn send_user_request(user: User) -> impl IntoResponse {
     (res.status(), res.text().await.unwrap())
 }
 
-async fn login (uid: String, password: String) -> impl IntoResponse {
+
+
+async fn login (uid: String, password: String) -> (impl IntoResponse, LoggedUser) {
 
     let body: HelloSer = HelloSer {
         uid: uid.clone(),
@@ -109,7 +133,7 @@ async fn login (uid: String, password: String) -> impl IntoResponse {
     let token = res.token;
 
     // Derive key from password
-    let (challenge_encryption_key, key_encryption_key) = crypto::key_derivation(password, res.salt);
+    let (challenge_encryption_key, key_encryption_key, key) = crypto::key_derivation(password, res.salt);
 
     // Send the challenge key to the server
     let res = client.post("http://localhost:3000/login")
@@ -125,7 +149,7 @@ async fn login (uid: String, password: String) -> impl IntoResponse {
     let res: ChallengeDes = res.json().await.unwrap();
 
     // Decrypt the challenge
-    let challenge = crypto::decrypt_challenge(challenge_encryption_key, res.challenge, res.nonce);
+    let challenge = crypto::decrypt_asym(challenge_encryption_key, res.challenge, res.nonce);
 
     // Try wrong challenge
     //let challenge = vec![0u8; challenge.len()];
@@ -143,12 +167,17 @@ async fn login (uid: String, password: String) -> impl IntoResponse {
         .await
         .unwrap();
 
-    (res.status(), res.text().await.unwrap())
+    let status = res.status();
+
+    let res2: LoggedUserDes = res.json().await.unwrap();
+    // Decrypt all user info
+    let res2 = crypto::decrypt_user_info(res2, key);
+    (status, res2)
 }
 
-async fn create_root_directory(uid: String) -> impl IntoResponse {
+async fn create_root_directory(uid: String, root_key: Vec<u8>) -> impl IntoResponse {
 
-    let response = create_directory("root".to_string(), uid).await.into_response();
+    let response = create_directory("root".to_string(), uid, root_key).await.into_response();
     match response.status() {
         StatusCode::OK => println!("Successfully created root directory!"),
         StatusCode::UNAUTHORIZED => println!("Login failed!"),
@@ -157,9 +186,10 @@ async fn create_root_directory(uid: String) -> impl IntoResponse {
 
 }
 
-async fn create_directory(directory_name: String, current_path: String) -> impl IntoResponse{
+async fn create_directory(directory_name: String, current_path: String, root_key: Vec<u8>) -> impl IntoResponse{
+
     // Create a new read directory structure
-    let read_directory = ReadDirectorySer {
+    let mut read_directory = ReadDirectorySer {
         directory_uid: current_path.clone(),
         directory_name: directory_name.clone(),
         files_names: vec![],
@@ -170,11 +200,14 @@ async fn create_directory(directory_name: String, current_path: String) -> impl 
     };
 
     // Create a new write directory structure
-    let write_directory = WriteDirectorySer {
+    let mut write_directory = WriteDirectorySer {
         directory_uid: current_path,
         directory_name,
         files_signing_keys: "".to_string(),
     };
+
+    // Encrypt needed fields
+    (read_directory, write_directory) = crypto::encrypt_directory_fields(root_key, read_directory, write_directory);
 
     let payload = DirectorySer {
         read: read_directory,
