@@ -137,24 +137,31 @@ pub(crate) fn decrypt_asym(key: Vec<u8>, message: String, nonce: String) -> Vec<
     decrypted
 }
 
-pub(crate) fn encrypt_directory_fields(master_key: Vec<u8>, read: ReadDirectorySer, write: WriteDirectorySer) -> (ReadDirectorySer, WriteDirectorySer) {
+pub(crate) fn encrypt_directory_fields(root_key: Vec<u8>, read: ReadDirectorySer, write: WriteDirectorySer) -> (ReadDirectorySer, WriteDirectorySer) {
+
+    // TODO REFACTOR THIS SHIT, NOT GOOD! USE SYM ENCRYPTION FUNCTION AND GENERATE KEY BEFORE
 
     let (pub_key, private_key) = generate_key_pair();
     let file_encryption_key = generate_sym_key();
 
-    // encrypt the file encryption key with the master key
+    // encrypt the file encryption key with the root key
     let nonce = Nonce::gen();
-    let secret = DryocSecretBox::encrypt_to_vecbox(&file_encryption_key, &nonce, &master_key);
+    let secret = DryocSecretBox::encrypt_to_vecbox(&file_encryption_key, &nonce, &root_key);
     let encrypted_file_key = secret.to_vec();
 
-    // encrypt the private signing key with the master key
+    // encrypt the private signing key with the root key
     let nonce_private_key = Nonce::gen();
-    let secret = DryocSecretBox::encrypt_to_vecbox(&private_key, &nonce_private_key, &master_key);
+    let secret = DryocSecretBox::encrypt_to_vecbox(&private_key, &nonce_private_key, &root_key);
     let encrypted_private_key = secret.to_vec();
+
+    // encrypt the directory name with the root key
+    let nonce_directory_name = Nonce::gen();
+    let secret = DryocSecretBox::encrypt_to_vecbox(&read.directory_name.as_bytes().to_vec(), &nonce_directory_name, &root_key);
+    let encrypted_directory_name = secret.to_vec();
 
     let read = ReadDirectorySer {
         directory_uid: read.directory_uid,
-        directory_name: read.directory_name,
+        directory_name: read.directory_name, // todo! encrypt the names
         files_names: read.files_names, // todo! encrypt the names
         files_uid: read.files_uid,
         files_encryption_keys: BASE64_STANDARD.encode(encrypted_file_key),
