@@ -1,4 +1,3 @@
-use std::io::Write;
 use base64::prelude::*;
 use dryoc::classic::crypto_kdf::crypto_kdf_derive_from_key;
 use dryoc::dryocsecretbox::*;
@@ -6,10 +5,7 @@ use dryoc::kx::{KeyPair};
 use dryoc::classic::crypto_pwhash::*;
 use dryoc::classic::crypto_secretbox::crypto_secretbox_open_easy;
 use dryoc::constants::{CRYPTO_SECRETBOX_KEYBYTES, CRYPTO_PWHASH_OPSLIMIT_INTERACTIVE, CRYPTO_PWHASH_MEMLIMIT_INTERACTIVE, CRYPTO_PWHASH_SALTBYTES, CRYPTO_SECRETBOX_MACBYTES};
-use dryoc::dryocsecretbox;
-use dryoc::pwhash::Salt;
 use dryoc::rng::copy_randombytes;
-use tokio::fs::ReadDir;
 use crate::serialization::{LoggedUser, LoggedUserClient, ReadDirectory, WriteDirectory};
 
 pub fn generate_key_pair() -> (Vec<u8>, Vec<u8>) {

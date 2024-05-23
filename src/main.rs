@@ -1,9 +1,7 @@
-use std::os::linux::raw::stat;
 use axum::response::IntoResponse;
 use base64::Engine;
 use base64::prelude::*;
 use reqwest::StatusCode;
-use serde::{Deserialize, Serialize};
 use crate::serialization::{Challenge, ChallengeResponse, Create, Directory, GetDir, Hello, HelloResponse, LoggedUser, LoggedUserClient, Login, ReadDirectory, WriteDirectory};
 
 
@@ -30,7 +28,7 @@ async fn main() {
 
     // Create a user and its root directory
     //send_user_request(user).await;
-    
+
 
     // Try to log in with the user
     let (res, logged_user) = login(user.uid.clone(), user.password).await;
@@ -75,7 +73,7 @@ fn create_user(uid: String, password: String) -> User {
     // Generate root key
     let root_key = crypto::generate_sym_key();
 
-    let user = User {
+    User {
         uid,
         password,
         signing_public_key,
@@ -84,8 +82,7 @@ fn create_user(uid: String, password: String) -> User {
         encryption_public_key,
         encryption_private_key,
         root_key
-    };
-    user
+    }
 }
 
 async fn send_user_request(user: User) -> impl IntoResponse {
