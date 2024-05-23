@@ -4,7 +4,7 @@ use base64::Engine;
 use base64::prelude::*;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use crate::serialization::{ChallengeDes, CreateSer, HelloSer, LoginSer, HelloResponseDes, ChallengeResponseSer, ReadDirectorySer, WriteDirectorySer, DirectorySer, UpdateUserDes, LoggedUserDes, LoggedUser};
+use crate::serialization::{ChallengeDes, CreateSer, HelloSer, LoginSer, HelloResponseDes, ChallengeResponseSer, ReadDirectorySer, WriteDirectorySer, DirectorySer, UpdateUserDes, LoggedUserDes, LoggedUser, GetDirSer, DirectoryDes, ReadDirectoryDes, WriteDirectoryDes};
 
 
 pub mod crypto;
@@ -24,7 +24,7 @@ struct User {
 #[tokio::main]
 async fn main() {
     // Create a new user
-    let uid = "3".to_string();
+    let uid = "1".to_string();
     let password = "password".to_string();
     let user = create_user(uid, password);
 
@@ -44,6 +44,18 @@ async fn main() {
     //create_root_directory(user.uid, logged_user.root_key).await;
 
 
+
+    //create_directory("test".to_string(), "1/1".to_string(), logged_user.root_key).await.into_response();
+
+    let (res, read, write) = get_directory("1".to_string(), logged_user).await;
+    match res.into_response().status() {
+        StatusCode::OK => println!("Successfully got directory!"),
+        StatusCode::UNAUTHORIZED => println!("Login failed!"),
+        _ => println!("Error"),
+    }
+
+    println!("{:?}", read);
+    println!("{:?}", write);
     // TODO: EVERY OTHER FUCKING FUNCTIONALITIES
 }
 
@@ -113,7 +125,6 @@ async fn send_user_request(user: User) -> impl IntoResponse {
 }
 
 
-
 async fn login (uid: String, password: String) -> (impl IntoResponse, LoggedUser) {
 
     let body: HelloSer = HelloSer {
@@ -149,7 +160,7 @@ async fn login (uid: String, password: String) -> (impl IntoResponse, LoggedUser
     let res: ChallengeDes = res.json().await.unwrap();
 
     // Decrypt the challenge
-    let challenge = crypto::decrypt_asym(challenge_encryption_key, res.challenge, res.nonce);
+    let challenge = crypto::sym_decryption(challenge_encryption_key, res.challenge, res.nonce);
 
     // Try wrong challenge
     //let challenge = vec![0u8; challenge.len()];
@@ -171,8 +182,8 @@ async fn login (uid: String, password: String) -> (impl IntoResponse, LoggedUser
 
     let res2: LoggedUserDes = res.json().await.unwrap();
     // Decrypt all user info
-    let res2 = crypto::decrypt_user_info(res2, key);
-    (status, res2)
+    let logged_user = crypto::decrypt_user_info(res2, key);
+    (status, logged_user)
 }
 
 async fn create_root_directory(uid: String, root_key: Vec<u8>) -> impl IntoResponse {
@@ -190,7 +201,7 @@ async fn create_directory(directory_name: String, current_path: String, root_key
 
     // Create a new read directory structure
     let read_directory = ReadDirectorySer {
-        directory_uid: current_path.clone(),
+        uid_path: current_path.clone(),
         directory_name: directory_name.clone(),
         nonce_name: "".to_string(),
         files_names: vec![],
@@ -218,4 +229,29 @@ async fn create_directory(directory_name: String, current_path: String, root_key
         .unwrap();
 
     (res.status(), res.text().await.unwrap())
+}
+
+async fn get_directory(uid_path: String, logged_user: LoggedUser) -> (impl IntoResponse, ReadDirectoryDes, WriteDirectoryDes) {
+
+    let payload = GetDirSer {
+        uid_path,
+        token: logged_user.token,
+    };
+
+    let client = reqwest::Client::new();
+    let res = client.post("http://localhost:3000/get_directory")
+        .json(&payload)
+        .send()
+        .await
+        .unwrap();
+
+    let status = res.status();
+    let res2: DirectoryDes = res.json().await.unwrap();
+    let read = res2.read;
+    let write = res2.write;
+
+    let (read, write) = crypto::decrypt_directory_fields(logged_user.root_key, read, write);
+
+    (status, read, write)
+
 }

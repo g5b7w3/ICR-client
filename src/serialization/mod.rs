@@ -1,6 +1,12 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
+pub struct GetDirSer {
+    pub uid_path: String,
+    pub token: String,
+}
+
+#[derive(Serialize)]
 pub struct DirectorySer {
     pub read: ReadDirectorySer,
     pub write: WriteDirectorySer,
@@ -8,7 +14,7 @@ pub struct DirectorySer {
 
 #[derive(Serialize)]
 pub struct ReadDirectorySer {
-    pub directory_uid: String,
+    pub uid_path: String,
     pub directory_name: String,
     pub files_names: Vec<String>,
     pub files_uid: Vec<String>,
@@ -108,6 +114,7 @@ pub struct LoggedUserDes{
     pub nonce_pk_encryption : String,
     pub root_key : String,
     pub root_nonce : String,
+    pub token : String,
 }
 
 #[derive(Debug)]
@@ -117,4 +124,31 @@ pub struct LoggedUser {
     pub master_key : Vec<u8>,
     pub shared_files : Vec<String>,
     pub root_key : Vec<u8>,
+    pub token : String
+}
+
+
+#[derive(Deserialize, Debug)]
+pub struct ReadDirectoryDes {
+    pub uid_path: String,
+    pub directory_name: String,
+    pub files_names: Vec<String>,
+    pub files_uid: Vec<String>,
+    pub files_encryption_keys: String,
+    pub files_signatures_verification_keys: String,
+    pub files_nonce: Vec<String>,
+    pub nonce_name: String,
+    pub nonce_key_file: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct WriteDirectoryDes {
+    pub files_signing_keys: String,
+    pub nonce_private_key: String,
+}
+
+#[derive(Deserialize)]
+pub struct DirectoryDes {
+    pub read: ReadDirectoryDes,
+    pub write: WriteDirectoryDes,
 }

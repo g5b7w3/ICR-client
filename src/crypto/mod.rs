@@ -10,7 +10,7 @@ use dryoc::dryocsecretbox;
 use dryoc::pwhash::Salt;
 use dryoc::rng::copy_randombytes;
 use tokio::fs::ReadDir;
-use crate::serialization::{LoggedUser, LoggedUserDes, ReadDirectorySer, UpdateUserDes, WriteDirectorySer};
+use crate::serialization::{LoggedUser, LoggedUserDes, ReadDirectoryDes, ReadDirectorySer, UpdateUserDes, WriteDirectoryDes, WriteDirectorySer};
 
 pub fn generate_key_pair() -> (Vec<u8>, Vec<u8>) {
     // Generate a new asymmetric key pair
@@ -120,13 +120,12 @@ pub(crate) fn decrypt_challenge_key(challenge_encryption_key: Vec<u8>, key_encry
 }
  */
 
-pub(crate) fn decrypt_asym(key: Vec<u8>, message: String, nonce: String) -> Vec<u8> {
+pub(crate) fn sym_decryption(key: Vec<u8>, message: String, nonce: String) -> Vec<u8> {
     // Decode from Base64
     let challenge = BASE64_STANDARD.decode(message).unwrap();
     let nonce = BASE64_STANDARD.decode(nonce).unwrap();
 
     // Convert to correct types
-
     let nonce = nonce.try_into().unwrap();
     let challenge_key = key.try_into().unwrap();
 
@@ -153,7 +152,7 @@ pub(crate) fn encrypt_directory_fields(root_key: Vec<u8>, read: ReadDirectorySer
     let (encrypted_directory_name, nonce_name) = sym_encryption(read.directory_name.as_bytes().to_vec(), root_key.clone());
 
     let read = ReadDirectorySer {
-        directory_uid: read.directory_uid,
+        uid_path: read.uid_path,
         directory_name: encrypted_directory_name,
         files_names: read.files_names, // todo! encrypt the names
         files_uid: read.files_uid,
@@ -175,16 +174,16 @@ pub(crate) fn encrypt_directory_fields(root_key: Vec<u8>, read: ReadDirectorySer
 
 pub(crate) fn decrypt_user_info(user: LoggedUserDes, key: Vec<u8>) -> LoggedUser {
     // Decrypt master key
-    let master_key = decrypt_asym(key.clone(), user.master_key, user.nonce_master);
+    let master_key = sym_decryption(key.clone(), user.master_key, user.nonce_master);
 
     // Decrypt the pk_signing key
-    let pk_signing = decrypt_asym(master_key.clone(), user.pk_signing, user.nonce_pk_signing);
+    let pk_signing = sym_decryption(master_key.clone(), user.pk_signing, user.nonce_pk_signing);
 
     // Decrypt the pk_encryption key
-    let pk_encryption = decrypt_asym(master_key.clone(), user.pk_encryption, user.nonce_pk_encryption);
+    let pk_encryption = sym_decryption(master_key.clone(), user.pk_encryption, user.nonce_pk_encryption);
 
     // Decrypt the root key
-    let root_key = decrypt_asym(master_key.clone(), user.root_key, user.root_nonce);
+    let root_key = sym_decryption(master_key.clone(), user.root_key, user.root_nonce);
 
     LoggedUser {
         pk_signing,
@@ -192,7 +191,38 @@ pub(crate) fn decrypt_user_info(user: LoggedUserDes, key: Vec<u8>) -> LoggedUser
         master_key,
         shared_files: user.shared_files,
         root_key,
+        token: user.token
     }
 
+}
 
+pub(crate) fn decrypt_directory_fields(key: Vec<u8>, read: ReadDirectoryDes, write: WriteDirectoryDes) -> (ReadDirectoryDes, WriteDirectoryDes) {
+
+    let directory_name = sym_decryption(key.clone(), read.directory_name, read.nonce_name.clone());
+    let directory_name = String::from_utf8(directory_name).unwrap();
+
+    let files_encryption_keys = sym_decryption(key.clone(), read.files_encryption_keys, read.nonce_key_file.clone());
+    let files_encryption_keys = BASE64_STANDARD.encode(files_encryption_keys);
+
+    let read = ReadDirectoryDes {
+        uid_path: read.uid_path,
+        directory_name,
+        files_names: read.files_names, // todo! encrypt the names
+        files_uid: read.files_uid,
+        files_encryption_keys,
+        files_signatures_verification_keys: read.files_signatures_verification_keys,
+        files_nonce: read.files_nonce,
+        nonce_name: read.nonce_name,
+        nonce_key_file: read.nonce_key_file,
+    };
+
+    let files_signing_keys = sym_decryption(key.clone(), write.files_signing_keys, write.nonce_private_key.clone());
+    let files_signing_keys = BASE64_STANDARD.encode(files_signing_keys);
+
+    let write = WriteDirectoryDes {
+        nonce_private_key: write.nonce_private_key,
+        files_signing_keys
+    };
+
+    (read, write)
 }
