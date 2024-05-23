@@ -31,6 +31,8 @@ async fn main() {
     // Create a user and its root directory
     //send_user_request(user).await;
 
+
+
     // Try to log in with the user
     let (res, logged_user) = login(user.uid.clone(), user.password).await;
     match res.into_response().status() {
@@ -39,13 +41,12 @@ async fn main() {
         _ => println!("Error"),
     }
 
-    println!("{:?}", logged_user);
+    //println!("{:?}", logged_user);
 
     //create_root_directory(user.uid, logged_user.root_key).await;
 
+    //create_directory("test".to_string(), "1/1".to_string(), logged_user.root_key).await.into_response(); // TODO this is false, need redo with right key
 
-
-    //create_directory("test".to_string(), "1/1".to_string(), logged_user.root_key).await.into_response();
 
     let (res, read, write) = get_directory("1".to_string(), logged_user).await;
     match res.into_response().status() {
@@ -56,7 +57,11 @@ async fn main() {
 
     println!("{:?}", read);
     println!("{:?}", write);
+
+
+
     // TODO: EVERY OTHER FUCKING FUNCTIONALITIES
+
 }
 
 // Function to create a new user

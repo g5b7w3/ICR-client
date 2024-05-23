@@ -165,7 +165,7 @@ pub(crate) fn encrypt_directory_fields(root_key: Vec<u8>, read: ReadDirectorySer
 
     let write = WriteDirectorySer {
         nonce_private_key,
-        files_signing_keys: BASE64_STANDARD.encode(encrypted_private_key),
+        files_signing_keys: encrypted_private_key,
     };
 
     (read, write)
