@@ -15,13 +15,14 @@ pub struct ReadDirectorySer {
     pub files_encryption_keys: String,
     pub files_signatures_verification_keys: String,
     pub files_nonce: Vec<String>,
+    pub nonce_name: String,
+    pub nonce_key_file: String,
 }
 
 #[derive(Serialize)]
 pub struct WriteDirectorySer {
-    pub directory_uid: String,
-    pub directory_name: String,
     pub files_signing_keys: String,
+    pub nonce_private_key: String,
 }
 
 #[derive(Serialize)]

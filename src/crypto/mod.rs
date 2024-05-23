@@ -137,41 +137,35 @@ pub(crate) fn decrypt_asym(key: Vec<u8>, message: String, nonce: String) -> Vec<
     decrypted
 }
 
-pub(crate) fn encrypt_directory_fields(root_key: Vec<u8>, read: ReadDirectorySer, write: WriteDirectorySer) -> (ReadDirectorySer, WriteDirectorySer) {
-
-    // TODO REFACTOR THIS SHIT, NOT GOOD! USE SYM ENCRYPTION FUNCTION AND GENERATE KEY BEFORE
+pub(crate) fn encrypt_directory_fields(root_key: Vec<u8>, read: ReadDirectorySer) -> (ReadDirectorySer, WriteDirectorySer) {
 
     let (pub_key, private_key) = generate_key_pair();
     let file_encryption_key = generate_sym_key();
 
     // encrypt the file encryption key with the root key
-    let nonce = Nonce::gen();
-    let secret = DryocSecretBox::encrypt_to_vecbox(&file_encryption_key, &nonce, &root_key);
-    let encrypted_file_key = secret.to_vec();
+    let (encrypted_key_file, nonce_key_file) = sym_encryption(file_encryption_key, root_key.clone());
 
     // encrypt the private signing key with the root key
-    let nonce_private_key = Nonce::gen();
-    let secret = DryocSecretBox::encrypt_to_vecbox(&private_key, &nonce_private_key, &root_key);
-    let encrypted_private_key = secret.to_vec();
+    let (encrypted_private_key, nonce_private_key) = sym_encryption(private_key,root_key.clone());
 
     // encrypt the directory name with the root key
-    let nonce_directory_name = Nonce::gen();
-    let secret = DryocSecretBox::encrypt_to_vecbox(&read.directory_name.as_bytes().to_vec(), &nonce_directory_name, &root_key);
-    let encrypted_directory_name = secret.to_vec();
+
+    let (encrypted_directory_name, nonce_name) = sym_encryption(read.directory_name.as_bytes().to_vec(), root_key.clone());
 
     let read = ReadDirectorySer {
         directory_uid: read.directory_uid,
-        directory_name: read.directory_name, // todo! encrypt the names
+        directory_name: encrypted_directory_name,
         files_names: read.files_names, // todo! encrypt the names
         files_uid: read.files_uid,
-        files_encryption_keys: BASE64_STANDARD.encode(encrypted_file_key),
+        files_encryption_keys: encrypted_key_file,
+        nonce_key_file,
         files_signatures_verification_keys: BASE64_STANDARD.encode(pub_key),
         files_nonce: read.files_nonce,
+        nonce_name,
     };
 
     let write = WriteDirectorySer {
-        directory_uid: write.directory_uid,
-        directory_name: write.directory_name, // todo! encrypt the names
+        nonce_private_key,
         files_signing_keys: BASE64_STANDARD.encode(encrypted_private_key),
     };
 

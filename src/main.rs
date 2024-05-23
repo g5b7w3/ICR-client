@@ -189,25 +189,20 @@ async fn create_root_directory(uid: String, root_key: Vec<u8>) -> impl IntoRespo
 async fn create_directory(directory_name: String, current_path: String, root_key: Vec<u8>) -> impl IntoResponse{
 
     // Create a new read directory structure
-    let mut read_directory = ReadDirectorySer {
+    let read_directory = ReadDirectorySer {
         directory_uid: current_path.clone(),
         directory_name: directory_name.clone(),
+        nonce_name: "".to_string(),
         files_names: vec![],
         files_uid: vec![],
         files_encryption_keys: "".to_string(),
         files_signatures_verification_keys: "".to_string(),
         files_nonce: vec![],
-    };
-
-    // Create a new write directory structure
-    let mut write_directory = WriteDirectorySer {
-        directory_uid: current_path,
-        directory_name,
-        files_signing_keys: "".to_string(),
+        nonce_key_file: "".to_string(),
     };
 
     // Encrypt needed fields
-    (read_directory, write_directory) = crypto::encrypt_directory_fields(root_key, read_directory, write_directory);
+    let (read_directory, write_directory) = crypto::encrypt_directory_fields(root_key, read_directory);
 
     let payload = DirectorySer {
         read: read_directory,
