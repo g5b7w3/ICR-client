@@ -10,7 +10,7 @@ use dryoc::dryocsecretbox;
 use dryoc::pwhash::Salt;
 use dryoc::rng::copy_randombytes;
 use tokio::fs::ReadDir;
-use crate::serialization::{LoggedUser, LoggedUserDes, ReadDirectoryDes, ReadDirectorySer, UpdateUserDes, WriteDirectoryDes, WriteDirectorySer};
+use crate::serialization::{LoggedUser, LoggedUserClient, ReadDirectory, WriteDirectory};
 
 pub fn generate_key_pair() -> (Vec<u8>, Vec<u8>) {
     // Generate a new asymmetric key pair
@@ -136,7 +136,7 @@ pub(crate) fn sym_decryption(key: Vec<u8>, message: String, nonce: String) -> Ve
     decrypted
 }
 
-pub(crate) fn encrypt_directory_fields(root_key: Vec<u8>, read: ReadDirectorySer) -> (ReadDirectorySer, WriteDirectorySer) {
+pub(crate) fn encrypt_directory_fields(root_key: Vec<u8>, read: ReadDirectory) -> (ReadDirectory, WriteDirectory) {
 
     let (pub_key, private_key) = generate_key_pair();
     let file_encryption_key = generate_sym_key();
@@ -151,7 +151,7 @@ pub(crate) fn encrypt_directory_fields(root_key: Vec<u8>, read: ReadDirectorySer
 
     let (encrypted_directory_name, nonce_name) = sym_encryption(read.directory_name.as_bytes().to_vec(), root_key.clone());
 
-    let read = ReadDirectorySer {
+    let read = ReadDirectory {
         uid_path: read.uid_path,
         directory_name: encrypted_directory_name,
         files_names: read.files_names, // todo! encrypt the names
@@ -163,7 +163,7 @@ pub(crate) fn encrypt_directory_fields(root_key: Vec<u8>, read: ReadDirectorySer
         nonce_name,
     };
 
-    let write = WriteDirectorySer {
+    let write = WriteDirectory {
         nonce_private_key,
         files_signing_keys: encrypted_private_key,
     };
@@ -172,7 +172,9 @@ pub(crate) fn encrypt_directory_fields(root_key: Vec<u8>, read: ReadDirectorySer
 }
 
 
-pub(crate) fn decrypt_user_info(user: LoggedUserDes, key: Vec<u8>) -> LoggedUser {
+
+
+pub(crate) fn decrypt_user_info(user: LoggedUser, key: Vec<u8>) -> LoggedUserClient {
     // Decrypt master key
     let master_key = sym_decryption(key.clone(), user.master_key, user.nonce_master);
 
@@ -185,7 +187,7 @@ pub(crate) fn decrypt_user_info(user: LoggedUserDes, key: Vec<u8>) -> LoggedUser
     // Decrypt the root key
     let root_key = sym_decryption(master_key.clone(), user.root_key, user.root_nonce);
 
-    LoggedUser {
+    LoggedUserClient {
         pk_signing,
         pk_encryption,
         master_key,
@@ -196,7 +198,7 @@ pub(crate) fn decrypt_user_info(user: LoggedUserDes, key: Vec<u8>) -> LoggedUser
 
 }
 
-pub(crate) fn decrypt_directory_fields(key: Vec<u8>, read: ReadDirectoryDes, write: WriteDirectoryDes) -> (ReadDirectoryDes, WriteDirectoryDes) {
+pub(crate) fn decrypt_directory_fields(key: Vec<u8>, read: ReadDirectory, write: WriteDirectory) -> (ReadDirectory, WriteDirectory) {
 
     let directory_name = sym_decryption(key.clone(), read.directory_name, read.nonce_name.clone());
     let directory_name = String::from_utf8(directory_name).unwrap();
@@ -204,7 +206,7 @@ pub(crate) fn decrypt_directory_fields(key: Vec<u8>, read: ReadDirectoryDes, wri
     let files_encryption_keys = sym_decryption(key.clone(), read.files_encryption_keys, read.nonce_key_file.clone());
     let files_encryption_keys = BASE64_STANDARD.encode(files_encryption_keys);
 
-    let read = ReadDirectoryDes {
+    let read = ReadDirectory {
         uid_path: read.uid_path,
         directory_name,
         files_names: read.files_names, // todo! encrypt the names
@@ -219,7 +221,7 @@ pub(crate) fn decrypt_directory_fields(key: Vec<u8>, read: ReadDirectoryDes, wri
     let files_signing_keys = sym_decryption(key.clone(), write.files_signing_keys, write.nonce_private_key.clone());
     let files_signing_keys = BASE64_STANDARD.encode(files_signing_keys);
 
-    let write = WriteDirectoryDes {
+    let write = WriteDirectory {
         nonce_private_key: write.nonce_private_key,
         files_signing_keys
     };

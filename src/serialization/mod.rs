@@ -1,19 +1,18 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize)]
-pub struct GetDirSer {
+#[derive(Deserialize, Serialize)]
+pub struct GetDir {
     pub uid_path: String,
     pub token: String,
 }
-
-#[derive(Serialize)]
-pub struct DirectorySer {
-    pub read: ReadDirectorySer,
-    pub write: WriteDirectorySer,
+#[derive(Deserialize, Serialize)]
+pub struct Directory {
+    pub read: ReadDirectory,
+    pub write: WriteDirectory,
 }
 
-#[derive(Serialize)]
-pub struct ReadDirectorySer {
+#[derive(Deserialize, Debug, Serialize)]
+pub struct ReadDirectory {
     pub uid_path: String,
     pub directory_name: String,
     pub files_names: Vec<String>,
@@ -25,20 +24,19 @@ pub struct ReadDirectorySer {
     pub nonce_key_file: String,
 }
 
-#[derive(Serialize)]
-pub struct WriteDirectorySer {
+#[derive(Deserialize, Debug, Serialize)]
+pub struct WriteDirectory {
     pub files_signing_keys: String,
     pub nonce_private_key: String,
 }
-
-#[derive(Serialize)]
-pub struct LoginSer{
+#[derive(Deserialize, Serialize)]
+pub struct Login {
     pub uid: String,
     pub challenge_key: String,
 }
 
-#[derive(Serialize)]
-pub struct CreateSer {
+#[derive(Deserialize, Serialize)]
+pub struct Create {
     pub uid: String,
     pub salt: String,
     pub master_key: String,
@@ -56,19 +54,19 @@ pub struct CreateSer {
     pub root_nonce: String,
 }
 
-#[derive(Serialize)]
-pub struct HelloSer {
+#[derive(Deserialize, Serialize)]
+pub struct Hello {
     pub uid: String,
 }
 
-#[derive(Serialize)]
-pub struct ChallengeResponseSer{
+#[derive(Deserialize, Serialize)]
+pub struct ChallengeResponse {
     pub challenge: String,
     pub token: String,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct UpdateUserDes{
+#[derive(Deserialize, Serialize)]
+pub struct UpdateUser {
     pub pk_signing: String,
     pub pk_encryption: String,
     pub master_key: String,
@@ -83,28 +81,29 @@ pub struct UpdateUserDes{
     pub root_nonce: String,
 }
 
-#[derive(Deserialize)]
-pub struct PubKeyDes {
+#[derive(Deserialize, Serialize)]
+pub struct PubKey {
     pub signing_key: String,
     pub encryption_key: String,
 }
 
-#[derive(Deserialize)]
-pub struct ChallengeDes {
+#[derive(Deserialize, Serialize)]
+pub struct Challenge {
     pub challenge: String,
     pub nonce: String,
     pub salt: String,
     pub nonce_chall: String,
 }
 
-#[derive(Deserialize)]
-pub struct HelloResponseDes{
+#[derive(Deserialize, Serialize)]
+pub struct HelloResponse {
     pub token: String,
     pub salt: String,
 }
 
-#[derive(Deserialize)]
-pub struct LoggedUserDes{
+
+#[derive(Deserialize, Serialize)]
+pub struct LoggedUser {
     pub pk_signing : String,
     pub pk_encryption : String,
     pub master_key : String,
@@ -114,22 +113,19 @@ pub struct LoggedUserDes{
     pub nonce_pk_encryption : String,
     pub root_key : String,
     pub root_nonce : String,
-    pub token : String,
+    pub token: String,
+}
+#[derive(Deserialize, Serialize)]
+pub struct LoggedUserClient {
+    pub pk_signing: Vec<u8>,
+    pub pk_encryption: Vec<u8>,
+    pub master_key: Vec<u8>,
+    pub shared_files: Vec<String>,
+    pub root_key: Vec<u8>,
+    pub token: String
 }
 
-#[derive(Debug)]
-pub struct LoggedUser {
-    pub pk_signing : Vec<u8>,
-    pub pk_encryption : Vec<u8>,
-    pub master_key : Vec<u8>,
-    pub shared_files : Vec<String>,
-    pub root_key : Vec<u8>,
-    pub token : String
-}
-
-
-#[derive(Deserialize, Debug)]
-pub struct ReadDirectoryDes {
+pub struct DirectoryInfo {
     pub uid_path: String,
     pub directory_name: String,
     pub files_names: Vec<String>,
@@ -139,16 +135,6 @@ pub struct ReadDirectoryDes {
     pub files_nonce: Vec<String>,
     pub nonce_name: String,
     pub nonce_key_file: String,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct WriteDirectoryDes {
     pub files_signing_keys: String,
     pub nonce_private_key: String,
-}
-
-#[derive(Deserialize)]
-pub struct DirectoryDes {
-    pub read: ReadDirectoryDes,
-    pub write: WriteDirectoryDes,
 }

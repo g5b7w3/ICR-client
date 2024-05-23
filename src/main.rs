@@ -4,7 +4,7 @@ use base64::Engine;
 use base64::prelude::*;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use crate::serialization::{ChallengeDes, CreateSer, HelloSer, LoginSer, HelloResponseDes, ChallengeResponseSer, ReadDirectorySer, WriteDirectorySer, DirectorySer, UpdateUserDes, LoggedUserDes, LoggedUser, GetDirSer, DirectoryDes, ReadDirectoryDes, WriteDirectoryDes};
+use crate::serialization::{Challenge, ChallengeResponse, Create, Directory, GetDir, Hello, HelloResponse, LoggedUser, LoggedUserClient, Login, ReadDirectory, WriteDirectory};
 
 
 pub mod crypto;
@@ -30,8 +30,7 @@ async fn main() {
 
     // Create a user and its root directory
     //send_user_request(user).await;
-
-
+    
 
     // Try to log in with the user
     let (res, logged_user) = login(user.uid.clone(), user.password).await;
@@ -101,7 +100,7 @@ async fn send_user_request(user: User) -> impl IntoResponse {
     let (root_key, root_nonce) = crypto::sym_encryption(user.root_key.clone(), user.master_key.clone());
 
     // Serialize the user object
-    let user = CreateSer {
+    let user = Create {
         uid: user.uid,
         salt,
         pk_signing,
@@ -130,9 +129,9 @@ async fn send_user_request(user: User) -> impl IntoResponse {
 }
 
 
-async fn login (uid: String, password: String) -> (impl IntoResponse, LoggedUser) {
+async fn login (uid: String, password: String) -> (impl IntoResponse, LoggedUserClient) {
 
-    let body: HelloSer = HelloSer {
+    let body: Hello = Hello {
         uid: uid.clone(),
     };
 
@@ -145,7 +144,7 @@ async fn login (uid: String, password: String) -> (impl IntoResponse, LoggedUser
         .unwrap();
 
     // Deserialize the response
-    let res: HelloResponseDes = res.json().await.unwrap();
+    let res: HelloResponse = res.json().await.unwrap();
     let token = res.token;
 
     // Derive key from password
@@ -153,7 +152,7 @@ async fn login (uid: String, password: String) -> (impl IntoResponse, LoggedUser
 
     // Send the challenge key to the server
     let res = client.post("http://localhost:3000/login")
-        .json(&LoginSer {
+        .json(&Login {
             uid,
             challenge_key: BASE64_STANDARD.encode(key_encryption_key),
         })
@@ -162,7 +161,7 @@ async fn login (uid: String, password: String) -> (impl IntoResponse, LoggedUser
         .unwrap();
 
     // Deserialize the response
-    let res: ChallengeDes = res.json().await.unwrap();
+    let res: Challenge = res.json().await.unwrap();
 
     // Decrypt the challenge
     let challenge = crypto::sym_decryption(challenge_encryption_key, res.challenge, res.nonce);
@@ -175,7 +174,7 @@ async fn login (uid: String, password: String) -> (impl IntoResponse, LoggedUser
 
     // Send a response to the server containing the challenge and the token
     let res = client.post("http://localhost:3000/response_challenge")
-        .json(&ChallengeResponseSer {
+        .json(&ChallengeResponse {
             challenge: BASE64_STANDARD.encode(challenge),
             token,
         })
@@ -185,7 +184,7 @@ async fn login (uid: String, password: String) -> (impl IntoResponse, LoggedUser
 
     let status = res.status();
 
-    let res2: LoggedUserDes = res.json().await.unwrap();
+    let res2: LoggedUser = res.json().await.unwrap();
     // Decrypt all user info
     let logged_user = crypto::decrypt_user_info(res2, key);
     (status, logged_user)
@@ -205,7 +204,7 @@ async fn create_root_directory(uid: String, root_key: Vec<u8>) -> impl IntoRespo
 async fn create_directory(directory_name: String, current_path: String, root_key: Vec<u8>) -> impl IntoResponse{
 
     // Create a new read directory structure
-    let read_directory = ReadDirectorySer {
+    let read_directory = ReadDirectory {
         uid_path: current_path.clone(),
         directory_name: directory_name.clone(),
         nonce_name: "".to_string(),
@@ -220,7 +219,7 @@ async fn create_directory(directory_name: String, current_path: String, root_key
     // Encrypt needed fields
     let (read_directory, write_directory) = crypto::encrypt_directory_fields(root_key, read_directory);
 
-    let payload = DirectorySer {
+    let payload = Directory {
         read: read_directory,
         write: write_directory,
     };
@@ -236,9 +235,9 @@ async fn create_directory(directory_name: String, current_path: String, root_key
     (res.status(), res.text().await.unwrap())
 }
 
-async fn get_directory(uid_path: String, logged_user: LoggedUser) -> (impl IntoResponse, ReadDirectoryDes, WriteDirectoryDes) {
+async fn get_directory(uid_path: String, logged_user: LoggedUserClient) -> (impl IntoResponse, ReadDirectory, WriteDirectory) {
 
-    let payload = GetDirSer {
+    let payload = GetDir {
         uid_path,
         token: logged_user.token,
     };
@@ -251,7 +250,7 @@ async fn get_directory(uid_path: String, logged_user: LoggedUser) -> (impl IntoR
         .unwrap();
 
     let status = res.status();
-    let res2: DirectoryDes = res.json().await.unwrap();
+    let res2: Directory = res.json().await.unwrap();
     let read = res2.read;
     let write = res2.write;
 
