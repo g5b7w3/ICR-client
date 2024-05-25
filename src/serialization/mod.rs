@@ -125,6 +125,20 @@ pub struct LoggedUserClient {
     pub token: String
 }
 
+impl LoggedUserClient {
+    pub fn clone(&self) -> LoggedUserClient {
+        LoggedUserClient {
+            pk_signing: self.pk_signing.clone(),
+            pk_encryption: self.pk_encryption.clone(),
+            master_key: self.master_key.clone(),
+            shared_files: self.shared_files.clone(),
+            root_key: self.root_key.clone(),
+            token: self.token.clone()
+        }
+    }
+
+}
+
 pub struct DirectoryInfo {
     pub uid_path: String,
     pub directory_name: String,

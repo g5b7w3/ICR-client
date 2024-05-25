@@ -61,7 +61,7 @@ pub fn encrypt_master_key(password: String, master_key: Vec<u8>) -> (String, Str
     let mut enc_chall = [0u8; CRYPTO_SECRETBOX_KEYBYTES];
     crypto_kdf_derive_from_key(&mut enc_chall, 1, context, &main_key).expect("kdf failed");
 
-    // Encrypt the challenge key
+    // Encrypt the challenge key TODO: clean this
     let nonce_chall = Nonce::gen();
     let secret = DryocSecretBox::encrypt_to_vecbox(&chall_key, &nonce_chall, &enc_chall);
     let secret_challange_key = secret.to_vec();

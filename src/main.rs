@@ -31,7 +31,7 @@ async fn main() {
 
 
     // Try to log in with the user
-    let (res, logged_user) = login(user.uid.clone(), user.password).await;
+    let (res, mut logged_user) = login(user.uid.clone(), user.password).await;
     match res.into_response().status() {
         StatusCode::OK => println!("Successfully logged in!"),
         StatusCode::UNAUTHORIZED => println!("Login failed!"),
@@ -42,10 +42,7 @@ async fn main() {
 
     //create_root_directory(user.uid, logged_user.root_key).await;
 
-    //create_directory("test".to_string(), "1/1".to_string(), logged_user.root_key).await.into_response(); // TODO this is false, need redo with right key
-
-
-    let (res, read, write) = get_directory("1".to_string(), logged_user).await;
+    let (res, read, write) = get_directory("1".to_string(), logged_user.clone()).await;
     match res.into_response().status() {
         StatusCode::OK => println!("Successfully got directory!"),
         StatusCode::UNAUTHORIZED => println!("Login failed!"),
@@ -55,8 +52,28 @@ async fn main() {
     println!("{:?}", read);
     println!("{:?}", write);
 
+    let current_key = BASE64_STANDARD.decode(read.files_encryption_keys.as_bytes()).unwrap();
+    let current_path = read.uid_path.clone();
 
+    let new_dir_path = format!("{}/{}", current_path, "2");
 
+    logged_user.root_key = current_key;
+
+    create_directory("A new directory".to_string(), new_dir_path.clone(), logged_user.root_key.clone()).await.into_response(); //
+
+    ;
+
+    let (res, read, write) = get_directory(new_dir_path, logged_user).await;
+    match res.into_response().status() {
+        StatusCode::OK => println!("Successfully got directory!"),
+        StatusCode::UNAUTHORIZED => println!("Login failed!"),
+        _ => println!("Error"),
+    }
+
+    println!("NEW DIRECTORY: ");
+
+    println!("{:?}", read);
+    println!("{:?}", write);
     // TODO: EVERY OTHER FUCKING FUNCTIONALITIES
 
 }
