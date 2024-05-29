@@ -70,10 +70,18 @@ async fn main() {
         _ => println!("Error"),
     }
 
-    // Create a file
-    let (new_read_directory, encrypted_content, nonce) = create_file(logged_user.clone(), "1/3".to_string(), "Mon fichier".to_string(), "Ceci est le contenu".to_string(), read);
+    /*
+    // Create a root file
+    let (new_read_directory, encrypted_content, nonce) = create_file(logged_user.clone(), "1/1".to_string(), "Mon fichier".to_string(), "Ceci est le contenu".to_string(), read);
 
-    send_file(new_read_directory, logged_user.clone(), nonce, encrypted_content).await.into_response();
+    send_file(new_read_directory, logged_user.clone(), nonce, encrypted_content, true).await.into_response();
+     */
+
+    // Create a file
+    let (new_read_directory, encrypted_content, nonce) = create_file(logged_user.clone(), "1/1/3".to_string(), "Mon fichier".to_string(), "Ceci est le contenu".to_string(), read);
+
+    send_file(new_read_directory, logged_user.clone(), nonce, encrypted_content, true).await.into_response();
+
 
     //create_directory("A new directory".to_string(), new_dir_path.clone(), logged_user.root_key.clone()).await.into_response();
 
@@ -303,16 +311,22 @@ fn create_file(logged_user: LoggedUserClient,path: String ,file_name: String, co
 
 }
 
-async fn send_file(read_directory: ReadDirectory, logged_user: LoggedUserClient, content_nonce: String, content: String) -> impl IntoResponse {
+async fn send_file(read_directory: ReadDirectory, logged_user: LoggedUserClient, content_nonce: String, content: String, is_root_flag: bool) -> impl IntoResponse {
 
     // Get parent directory
+    // TODO /!\ MANUALLY SELECT ROOT PARENT DIRECTORY FOR NOW /!\
     let (res, parent_read, parent_write) = get_directory("1".to_string(), logged_user.clone()).await;
     match res.into_response().status() {
         StatusCode::OK => println!("Successfully got directory!"),
         StatusCode::UNAUTHORIZED => println!("Login failed!"),
         _ => println!("Error"),
     }
-    let parent_key = BASE64_STANDARD.decode(parent_read.files_encryption_keys.as_bytes()).unwrap();
+
+
+    let parent_key = match is_root_flag {
+        true => logged_user.root_key.clone(),
+        false => BASE64_STANDARD.decode(parent_read.files_encryption_keys.as_bytes()).unwrap()
+    };
 
     let (read,write) = crypto::encrypt_directory_fields(parent_key, read_directory);
 
