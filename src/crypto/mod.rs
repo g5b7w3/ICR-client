@@ -6,6 +6,7 @@ use dryoc::classic::crypto_pwhash::*;
 use dryoc::classic::crypto_secretbox::crypto_secretbox_open_easy;
 use dryoc::constants::{CRYPTO_SECRETBOX_KEYBYTES, CRYPTO_PWHASH_OPSLIMIT_INTERACTIVE, CRYPTO_PWHASH_MEMLIMIT_INTERACTIVE, CRYPTO_PWHASH_SALTBYTES, CRYPTO_SECRETBOX_MACBYTES};
 use dryoc::rng::copy_randombytes;
+use crate::crypto;
 use crate::serialization::{LoggedUser, LoggedUserClient, ReadDirectory, WriteDirectory};
 
 pub fn generate_key_pair() -> (Vec<u8>, Vec<u8>) {
@@ -137,25 +138,36 @@ pub(crate) fn encrypt_directory_fields(root_key: Vec<u8>, read: ReadDirectory) -
     let (pub_key, private_key) = generate_key_pair();
     let file_encryption_key = generate_sym_key();
 
-    // encrypt the file encryption key with the root key
+    // Encrypt the file encryption key with the root key
     let (encrypted_key_file, nonce_key_file) = sym_encryption(file_encryption_key, root_key.clone());
 
-    // encrypt the private signing key with the root key
+    // Encrypt the private signing key with the root key
     let (encrypted_private_key, nonce_private_key) = sym_encryption(private_key,root_key.clone());
 
-    // encrypt the directory name with the root key
-
+    // Encrypt the directory name with the root key
     let (encrypted_directory_name, nonce_name) = sym_encryption(read.directory_name.as_bytes().to_vec(), root_key.clone());
+
+
+    let mut encrypted_name = vec![];
+    let mut nonce= vec![];
+    // Encrypt the files names if not empty
+    if !read.files_names.is_empty(){
+        for i in read.files_names.clone() {
+            let (encrypted_directory_name, nonce_name) = sym_encryption(i.as_bytes().to_vec(), root_key.clone());
+            encrypted_name.push(encrypted_directory_name);
+            nonce.push(nonce_name);
+        }
+    }
 
     let read = ReadDirectory {
         uid_path: read.uid_path,
         directory_name: encrypted_directory_name,
-        files_names: read.files_names, // todo! encrypt the names
+        files_names: encrypted_name,
         files_uid: read.files_uid,
         files_encryption_keys: encrypted_key_file,
         nonce_key_file,
         files_signatures_verification_keys: BASE64_STANDARD.encode(pub_key),
-        files_nonce: read.files_nonce,
+        files_nonce: nonce,
         nonce_name,
     };
 

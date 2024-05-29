@@ -125,6 +125,19 @@ pub struct LoggedUserClient {
     pub token: String
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct FileCreation {
+    pub read_directory: ReadDirectory,
+    pub content: String,
+    pub nonce: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct FileContent {
+    pub content: String,
+    pub nonce: String,
+}
+
 impl LoggedUserClient {
     pub fn clone(&self) -> LoggedUserClient {
         LoggedUserClient {
