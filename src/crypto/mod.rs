@@ -6,15 +6,17 @@ use dryoc::classic::crypto_pwhash::*;
 use dryoc::classic::crypto_secretbox::crypto_secretbox_open_easy;
 use dryoc::constants::{CRYPTO_SECRETBOX_KEYBYTES, CRYPTO_PWHASH_OPSLIMIT_INTERACTIVE, CRYPTO_PWHASH_MEMLIMIT_INTERACTIVE, CRYPTO_PWHASH_SALTBYTES, CRYPTO_SECRETBOX_MACBYTES};
 use dryoc::rng::copy_randombytes;
-use crate::crypto;
+use dryoc::sign::*;
 use crate::serialization::{LoggedUser, LoggedUserClient, ReadDirectory, WriteDirectory};
+use dryoc::generichash::{GenericHash};
+use dryoc::sign;
 
 pub fn generate_key_pair() -> (Vec<u8>, Vec<u8>) {
     // Generate a new asymmetric key pair
-    let key_pair = KeyPair::gen();
-    let string_public_key = key_pair.public_key.to_vec();
-    let string_secret_key = key_pair.secret_key.to_vec();
-    (string_public_key, string_secret_key)
+    let keypair = SigningKeyPair::gen_with_defaults();
+    let keypair_pub = keypair.public_key.to_vec();
+    let keypair_sec = keypair.secret_key.to_vec();
+    (keypair_pub, keypair_sec)
 }
 
 pub fn generate_sym_key() -> Vec<u8> {
@@ -29,6 +31,16 @@ pub fn sym_encryption(message: Vec<u8>, master_key: Vec<u8>) -> (String, String)
     let sodium_box = secret.to_vec();
     (BASE64_STANDARD.encode(sodium_box), BASE64_STANDARD.encode(nonce))
 }
+
+pub fn sign(message: String, signing_key: Vec<u8>) -> (String) {
+
+    let public_key = vec![0u8; 32];
+    let mut keypair: SigningKeyPair<PublicKey, SecretKey> = SigningKeyPair::<StackByteArray<32>, StackByteArray<64>>::from_slices(&public_key,&signing_key).unwrap();
+
+    let signed_message = keypair.sign::<Signature, Vec<u8>>(Vec::from(message)).unwrap().to_vec();
+    BASE64_STANDARD.encode(signed_message)
+}
+
 
 pub fn encrypt_master_key(password: String, master_key: Vec<u8>) -> (String, String, String, String, String) {
     let mut key = [0u8; CRYPTO_SECRETBOX_KEYBYTES];
@@ -204,6 +216,8 @@ pub(crate) fn decrypt_user_info(user: LoggedUser, key: Vec<u8>) -> LoggedUserCli
         token: user.token,
         recovered_key: vec![],
         recovered_path: vec![],
+        recovered_signing_key: vec![],
+        recovered_verification_key: vec![],
     }
 
 }

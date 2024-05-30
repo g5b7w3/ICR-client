@@ -124,7 +124,9 @@ pub struct LoggedUserClient {
     pub root_key: Vec<u8>,
     pub token: String,
     pub recovered_key: Vec<Vec<u8>>,
-    pub recovered_path: Vec<String>
+    pub recovered_path: Vec<String>,
+    pub recovered_signing_key: Vec<Vec<u8>>,
+    pub recovered_verification_key: Vec<Vec<u8>>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -132,6 +134,7 @@ pub struct FileCreation {
     pub read_directory: ReadDirectory,
     pub content: String,
     pub nonce: String,
+    pub signature: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -150,7 +153,9 @@ impl LoggedUserClient {
             root_key: self.root_key.clone(),
             token: self.token.clone(),
             recovered_key: self.recovered_key.clone(),
-            recovered_path: self.recovered_path.clone()
+            recovered_path: self.recovered_path.clone(),
+            recovered_signing_key: self.recovered_signing_key.clone(),
+            recovered_verification_key: self.recovered_verification_key.clone(),
         }
     }
 

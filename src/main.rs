@@ -1,3 +1,4 @@
+use std::io::read_to_string;
 use std::path::Prefix::Verbatim;
 use std::ptr::{read, write};
 use axum::response::IntoResponse;
@@ -10,6 +11,12 @@ use crate::serialization::{Challenge, ChallengeResponse, Create, Directory, File
 
 pub mod crypto;
 pub mod serialization;
+
+enum CryptoOperation {
+    Encrypt,
+    Sign,
+    Verify,
+}
 
 struct User {
     uid: String,
@@ -33,6 +40,7 @@ async fn main() {
     //send_user_request(user).await;
 
 
+
     // Try to log in with the user
     let (res, mut logged_user) = login(user.uid.clone(), user.password).await;
     match res.into_response().status() {
@@ -46,6 +54,7 @@ async fn main() {
     //create_root_directory(user.uid, logged_user.root_key).await;
 
 
+
     let (res, read, write) = get_directory("1".to_string(), logged_user.clone()).await;
     match res.into_response().status() {
         StatusCode::OK => println!("Successfully got directory!"),
@@ -56,11 +65,14 @@ async fn main() {
     //println!("{:?}", read);
     //println!("{:?}", write);
 
-    let current_key = BASE64_STANDARD.decode(read.files_encryption_keys.as_bytes()).unwrap();
-    let current_path = read.uid_path.clone();
 
-    logged_user.recovered_key.push(current_key.clone());
-    logged_user.recovered_path.push(current_path.clone());
+    logged_user.recovered_key.push(BASE64_STANDARD.decode(read.files_encryption_keys.as_bytes()).unwrap());
+    logged_user.recovered_path.push(read.uid_path.clone());
+    logged_user.recovered_signing_key.push(BASE64_STANDARD.decode(write.files_signing_keys.as_bytes()).unwrap());
+    logged_user.recovered_verification_key.push(BASE64_STANDARD.decode(read.files_signatures_verification_keys.as_bytes()).unwrap());
+
+    //create_directory("A new directory".to_string(), "1/1".to_string(), logged_user.recovered_key[0].clone()).await.into_response();
+
 
 
     let (res, read, write) = get_directory("1/1".to_string(), logged_user.clone()).await;
@@ -70,13 +82,23 @@ async fn main() {
         _ => println!("Error"),
     }
 
-    let current_key = BASE64_STANDARD.decode(read.files_encryption_keys.as_bytes()).unwrap();
-    let current_path = read.uid_path.clone();
+    logged_user.recovered_key.push(BASE64_STANDARD.decode(read.files_encryption_keys.as_bytes()).unwrap());
+    logged_user.recovered_path.push(read.uid_path.clone());
+    logged_user.recovered_signing_key.push(BASE64_STANDARD.decode(write.files_signing_keys.as_bytes()).unwrap());
+    logged_user.recovered_verification_key.push(BASE64_STANDARD.decode(read.files_signatures_verification_keys.as_bytes()).unwrap());
 
-    logged_user.recovered_key.push(current_key.clone());
-    logged_user.recovered_path.push(current_path.clone());
+    let (new_read_directory, encrypted_content, nonce, signature) = create_file(logged_user.clone(), "1/1/3".to_string(), "Mon fichier 3".to_string(), "Ceci est signé".to_string(), read);
+    send_file(new_read_directory, logged_user.clone(), nonce, encrypted_content, false, signature).await.into_response();
 
     // Get a file
+    let (res, content) = get_file("1/1/3".to_string(), logged_user.clone()).await;
+    match res.into_response().status() {
+        StatusCode::OK => println!("Successfully got file!"),
+        StatusCode::UNAUTHORIZED => println!("Login failed!"),
+        _ => println!("Error"),
+    }
+
+    println!("{:?}", content);
 
 
     /*
@@ -87,9 +109,9 @@ async fn main() {
      */
 
     // Create a file
-    //let (new_read_directory, encrypted_content, nonce) = create_file(logged_user.clone(), "1/1/2".to_string(), "Mon fichier2".to_string(), "Ceci est le contenu".to_string(), read);
+    //let (new_read_directory, encrypted_content, nonce, signature) = create_file(logged_user.clone(), "1/1/2".to_string(), "Mon fichier2".to_string(), "Ceci est le contenu".to_string(), read);
 
-    //send_file(new_read_directory, logged_user.clone(), nonce, encrypted_content, false).await.into_response();
+    //send_file(new_read_directory, logged_user.clone(), nonce, encrypted_content, false, signature).await.into_response();
 
 
     //create_directory("A new directory".to_string(), new_dir_path.clone(), logged_user.root_key.clone()).await.into_response();
@@ -287,7 +309,7 @@ async fn get_directory(mut uid_path: String, logged_user: LoggedUserClient) -> (
 
     let payload = GetDir {
         uid_path: uid_path.clone(),
-        token: logged_user.token,
+        token: logged_user.token.clone(),
     };
 
     let client = reqwest::Client::new();
@@ -302,40 +324,34 @@ async fn get_directory(mut uid_path: String, logged_user: LoggedUserClient) -> (
     let read = res2.read;
     let write = res2.write;
 
-    let mut key = vec![0u8];
-    if uid_path.len().clone() > 2 {
-        // Remove last char in the path
-        uid_path.pop();
-        uid_path.pop();
-        for (i, path) in logged_user.recovered_path.iter().enumerate(){
-                if uid_path == *path{
-                   key = logged_user.recovered_key[i].clone();
-                }
-        }
-    }
-    else {
-        key = logged_user.root_key.clone();
-    }
-
+    let key = match_key(uid_path.clone(), logged_user.clone(), CryptoOperation::Encrypt);
     let (read, write) = crypto::decrypt_directory_fields(key, read, write);
 
     (status, read, write)
 
 }
 
-fn create_file(logged_user: LoggedUserClient,path: String ,file_name: String, content: String, read_directory: ReadDirectory) -> (ReadDirectory, String, String) {
-    // Encrypt file content
-    let (encrypted_content, nonce) = crypto::sym_encryption(content.as_bytes().to_vec(), logged_user.root_key.clone());
+fn create_file(logged_user: LoggedUserClient,path: String ,file_name: String, content: String, read_directory: ReadDirectory) -> (ReadDirectory, String, String, String) {
+    // Recover encryption key
+    let key = match_key(path.clone(), logged_user.clone(), CryptoOperation::Encrypt);
 
+    let signing_key = match_key(path.clone(), logged_user.clone(), CryptoOperation::Sign);
+
+    // Encrypt the content
+    let (encrypted_content, nonce) = crypto::sym_encryption(content.as_bytes().to_vec(), key);
+
+    let signature = crypto::sign(encrypted_content.clone(), signing_key);
+
+    // Update the read directory information
     let mut new_read_directory = read_directory;
     new_read_directory.files_names.push(file_name.clone());
     new_read_directory.files_uid.push(path.clone());
 
-    (new_read_directory, encrypted_content, nonce)
+    (new_read_directory, encrypted_content, nonce, signature)
 
 }
 
-async fn send_file(read_directory: ReadDirectory, logged_user: LoggedUserClient, content_nonce: String, content: String, is_root_flag: bool) -> impl IntoResponse {
+async fn send_file(read_directory: ReadDirectory, logged_user: LoggedUserClient, content_nonce: String, content: String, is_root_flag: bool, signature: String) -> impl IntoResponse {
 
     // Get parent directory
     // TODO /!\ MANUALLY SELECT ROOT PARENT DIRECTORY FOR NOW /!\
@@ -346,18 +362,21 @@ async fn send_file(read_directory: ReadDirectory, logged_user: LoggedUserClient,
         _ => println!("Error"),
     }
 
-
+    // Recover the parent key, depending of whether the file is in the root directory or not
     let parent_key = match is_root_flag {
         true => logged_user.root_key.clone(),
         false => BASE64_STANDARD.decode(parent_read.files_encryption_keys.as_bytes()).unwrap()
     };
 
+    // Encrypt the directory fields
     let (read,write) = crypto::encrypt_directory_fields(parent_key, read_directory);
+
 
     let payload: FileCreation = FileCreation {
         read_directory: read,
         content,
-        nonce: content_nonce
+        nonce: content_nonce,
+        signature,
     };
 
     let client = reqwest::Client::new();
@@ -372,8 +391,7 @@ async fn send_file(read_directory: ReadDirectory, logged_user: LoggedUserClient,
 }
 
 
-
-async fn get_file(uid_path: String, key: Vec<u8>) -> (impl IntoResponse, String){
+async fn get_file(uid_path: String, logged_user: LoggedUserClient) -> (impl IntoResponse, String){
 
     let client = reqwest::Client::new();
     let res = client.post("http://localhost:3000/get_file")
@@ -385,7 +403,31 @@ async fn get_file(uid_path: String, key: Vec<u8>) -> (impl IntoResponse, String)
     let status = res.status();
     let res:FileContent = res.json().await.unwrap();
 
-    let decryypted_content = crypto::sym_decryption(key, res.content, res.nonce);
+    // Recover the key and decrypt the content of the file
+    let key = match_key(uid_path.clone(), logged_user.clone(), CryptoOperation::Encrypt);
+    let decrypted_content = crypto::sym_decryption(key, res.content, res.nonce);
 
-    (status, String::from_utf8(decryypted_content).unwrap())
+    (status, String::from_utf8(decrypted_content).unwrap())
+}
+
+
+fn match_key(mut uid_path: String, logged_user: LoggedUserClient, crypto_operation: CryptoOperation) -> Vec<u8> {
+    if uid_path.len().clone() > 2 {
+        // Remove last char in the path // TODO Better shit than this so we can handle two digits uid
+        uid_path.pop();
+        uid_path.pop();
+        for (i, path) in logged_user.recovered_path.iter().enumerate(){
+            if uid_path == *path{
+                match crypto_operation {
+                    CryptoOperation::Encrypt => return logged_user.recovered_key[i].clone(),
+                    CryptoOperation::Sign => return logged_user.recovered_signing_key[i].clone(),
+                    CryptoOperation::Verify => return logged_user.recovered_verification_key[i].clone()
+                }
+            }
+        }
+        return vec![0u8]
+    }
+    else {
+        return logged_user.root_key.clone()
+    }
 }
