@@ -1,10 +1,11 @@
+use std::path::Prefix::Verbatim;
 use std::ptr::{read, write};
 use axum::response::IntoResponse;
 use base64::Engine;
 use base64::prelude::*;
 use reqwest::StatusCode;
 use serde::__private::de::Content;
-use crate::serialization::{Challenge, ChallengeResponse, Create, Directory, FileCreation, GetDir, Hello, HelloResponse, LoggedUser, LoggedUserClient, Login, ReadDirectory, WriteDirectory};
+use crate::serialization::{Challenge, ChallengeResponse, Create, Directory, FileContent, FileCreation, GetDir, Hello, HelloResponse, LoggedUser, LoggedUserClient, Login, ReadDirectory, WriteDirectory};
 
 
 pub mod crypto;
@@ -44,7 +45,7 @@ async fn main() {
 
     //create_root_directory(user.uid, logged_user.root_key).await;
 
-    /*
+
     let (res, read, write) = get_directory("1".to_string(), logged_user.clone()).await;
     match res.into_response().status() {
         StatusCode::OK => println!("Successfully got directory!"),
@@ -52,23 +53,31 @@ async fn main() {
         _ => println!("Error"),
     }
 
-    println!("{:?}", read);
-    println!("{:?}", write);
+    //println!("{:?}", read);
+    //println!("{:?}", write);
 
     let current_key = BASE64_STANDARD.decode(read.files_encryption_keys.as_bytes()).unwrap();
     let current_path = read.uid_path.clone();
 
-    let new_dir_path = format!("{}/{}", current_path, "3");
+    logged_user.recovered_key.push(current_key.clone());
+    logged_user.recovered_path.push(current_path.clone());
 
-    let saved_key = logged_user.root_key.clone();
-    logged_user.root_key = current_key;
-     */
-    let (res, read, write) = get_directory("1".to_string(), logged_user.clone()).await;
+
+    let (res, read, write) = get_directory("1/1".to_string(), logged_user.clone()).await;
     match res.into_response().status() {
         StatusCode::OK => println!("Successfully got directory!"),
         StatusCode::UNAUTHORIZED => println!("Login failed!"),
         _ => println!("Error"),
     }
+
+    let current_key = BASE64_STANDARD.decode(read.files_encryption_keys.as_bytes()).unwrap();
+    let current_path = read.uid_path.clone();
+
+    logged_user.recovered_key.push(current_key.clone());
+    logged_user.recovered_path.push(current_path.clone());
+
+    // Get a file
+
 
     /*
     // Create a root file
@@ -78,9 +87,9 @@ async fn main() {
      */
 
     // Create a file
-    let (new_read_directory, encrypted_content, nonce) = create_file(logged_user.clone(), "1/1/3".to_string(), "Mon fichier".to_string(), "Ceci est le contenu".to_string(), read);
+    //let (new_read_directory, encrypted_content, nonce) = create_file(logged_user.clone(), "1/1/2".to_string(), "Mon fichier2".to_string(), "Ceci est le contenu".to_string(), read);
 
-    send_file(new_read_directory, logged_user.clone(), nonce, encrypted_content, true).await.into_response();
+    //send_file(new_read_directory, logged_user.clone(), nonce, encrypted_content, false).await.into_response();
 
 
     //create_directory("A new directory".to_string(), new_dir_path.clone(), logged_user.root_key.clone()).await.into_response();
@@ -274,10 +283,10 @@ async fn create_directory(directory_name: String, current_path: String, root_key
     (res.status(), res.text().await.unwrap())
 }
 
-async fn get_directory(uid_path: String, logged_user: LoggedUserClient) -> (impl IntoResponse, ReadDirectory, WriteDirectory) {
+async fn get_directory(mut uid_path: String, logged_user: LoggedUserClient) -> (impl IntoResponse, ReadDirectory, WriteDirectory) {
 
     let payload = GetDir {
-        uid_path,
+        uid_path: uid_path.clone(),
         token: logged_user.token,
     };
 
@@ -293,7 +302,22 @@ async fn get_directory(uid_path: String, logged_user: LoggedUserClient) -> (impl
     let read = res2.read;
     let write = res2.write;
 
-    let (read, write) = crypto::decrypt_directory_fields(logged_user.root_key, read, write);
+    let mut key = vec![0u8];
+    if uid_path.len().clone() > 2 {
+        // Remove last char in the path
+        uid_path.pop();
+        uid_path.pop();
+        for (i, path) in logged_user.recovered_path.iter().enumerate(){
+                if uid_path == *path{
+                   key = logged_user.recovered_key[i].clone();
+                }
+        }
+    }
+    else {
+        key = logged_user.root_key.clone();
+    }
+
+    let (read, write) = crypto::decrypt_directory_fields(key, read, write);
 
     (status, read, write)
 
@@ -315,7 +339,7 @@ async fn send_file(read_directory: ReadDirectory, logged_user: LoggedUserClient,
 
     // Get parent directory
     // TODO /!\ MANUALLY SELECT ROOT PARENT DIRECTORY FOR NOW /!\
-    let (res, parent_read, parent_write) = get_directory("1".to_string(), logged_user.clone()).await;
+    let (res, parent_read, parent_write) = get_directory("1/1".to_string(), logged_user.clone()).await;
     match res.into_response().status() {
         StatusCode::OK => println!("Successfully got directory!"),
         StatusCode::UNAUTHORIZED => println!("Login failed!"),
@@ -345,4 +369,23 @@ async fn send_file(read_directory: ReadDirectory, logged_user: LoggedUserClient,
 
     (res.status(), res.text().await.unwrap())
 
+}
+
+
+
+async fn get_file(uid_path: String, key: Vec<u8>) -> (impl IntoResponse, String){
+
+    let client = reqwest::Client::new();
+    let res = client.post("http://localhost:3000/get_file")
+        .json(&uid_path)
+        .send()
+        .await
+        .unwrap();
+
+    let status = res.status();
+    let res:FileContent = res.json().await.unwrap();
+
+    let decryypted_content = crypto::sym_decryption(key, res.content, res.nonce);
+
+    (status, String::from_utf8(decryypted_content).unwrap())
 }

@@ -122,7 +122,9 @@ pub struct LoggedUserClient {
     pub master_key: Vec<u8>,
     pub shared_files: Vec<String>,
     pub root_key: Vec<u8>,
-    pub token: String
+    pub token: String,
+    pub recovered_key: Vec<Vec<u8>>,
+    pub recovered_path: Vec<String>
 }
 
 #[derive(Deserialize, Serialize)]
@@ -146,7 +148,9 @@ impl LoggedUserClient {
             master_key: self.master_key.clone(),
             shared_files: self.shared_files.clone(),
             root_key: self.root_key.clone(),
-            token: self.token.clone()
+            token: self.token.clone(),
+            recovered_key: self.recovered_key.clone(),
+            recovered_path: self.recovered_path.clone()
         }
     }
 

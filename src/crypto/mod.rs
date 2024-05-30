@@ -201,7 +201,9 @@ pub(crate) fn decrypt_user_info(user: LoggedUser, key: Vec<u8>) -> LoggedUserCli
         master_key,
         shared_files: user.shared_files,
         root_key,
-        token: user.token
+        token: user.token,
+        recovered_key: vec![],
+        recovered_path: vec![],
     }
 
 }
